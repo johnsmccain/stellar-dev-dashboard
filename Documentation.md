@@ -145,32 +145,6 @@ Please make sure your PR:
 
 ---
 
-## Open Issues
-
-Issues labeled `Stellar Wave` are available for contributors to pick up during an active Wave sprint.
-
-### 🟢 Trivial — 100 Points
-- [ ] Copy-to-clipboard button on all public key / hash fields
-- [ ] Add pagination to transaction and operation history
-- [ ] Show human-readable operation type labels (e.g. "Payment" instead of `payment`)
-- [ ] Dark/light theme toggle
-- [ ] Display account creation date from the first transaction
-
-### 🟡 Medium — 150 Points
-- [ ] Real-time ledger streaming via Horizon SSE (Server-Sent Events)
-- [ ] Asset price feed integration (via StellarTerm or Stellar's SDEX)
-- [ ] Multi-account comparison view (side-by-side balances)
-- [ ] Ledger close time chart for the last 20 ledgers
-- [ ] Offer (DEX order) list viewer per account
-
-### 🔴 High — 200 Points
-- [ ] Full Soroban contract invocation UI (call contract functions with arguments)
-- [ ] Transaction builder and fee simulator
-- [ ] Path payment explorer (find best payment paths between assets)
-- [ ] TypeScript migration of `stellar.js` and `store.js`
-
----
-
 ## Roadmap
 
 - **v0.1** — Account viewer, transaction history, Soroban explorer, network stats, faucet ✅
