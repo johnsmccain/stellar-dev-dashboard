@@ -8,6 +8,7 @@ import Contracts from './components/dashboard/Contracts'
 import NetworkStats from './components/dashboard/NetworkStats'
 import Faucet from './components/dashboard/Faucet'
 import Builder from './components/dashboard/Builder'
+import PathExplorer from './components/dashboard/PathExplorer'
 import { useStore } from './lib/store'
 
 const TABS = {
@@ -18,6 +19,7 @@ const TABS = {
   network:      NetworkStats,
   builder:      Builder,
   faucet:       Faucet,
+  paths:        PathExplorer,
 }
 
 export default function App() {

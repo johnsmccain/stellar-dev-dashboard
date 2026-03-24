@@ -8,6 +8,7 @@ const NAV_ITEMS = [
   { id: 'contracts',    label: 'Contracts',       icon: '◻' },
   { id: 'network',      label: 'Network',         icon: '◎' },
   { id: 'builder',      label: 'Builder',         icon: '⚒' },
+  { id: 'paths',        label: 'Path Explorer',   icon: '⇢' },
   { id: 'faucet',       label: 'Faucet',          icon: '⬡' },
 ]
 
