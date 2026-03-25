@@ -8,18 +8,18 @@ import Contracts from './components/dashboard/Contracts'
 import NetworkStats from './components/dashboard/NetworkStats'
 import Faucet from './components/dashboard/Faucet'
 import Builder from './components/dashboard/Builder'
-import PathExplorer from './components/dashboard/PathExplorer'
+import Compare from './components/dashboard/Compare'
 import { useStore } from './lib/store'
 
 const TABS = {
-  overview:     Overview,
-  account:      Account,
+  overview: Overview,
+  account: Account,
   transactions: Transactions,
-  contracts:    Contracts,
-  network:      NetworkStats,
-  builder:      Builder,
-  faucet:       Faucet,
-  paths:        PathExplorer,
+  contracts: Contracts,
+  network: NetworkStats,
+  builder: Builder,
+  faucet: Faucet,
+  compare: Compare,
 }
 
 export default function App() {
