@@ -31,7 +31,7 @@ const TABS = {
   network: NetworkStats,
   builder: Builder,
   faucet: Faucet,
-  compare: Compare,
+  compare: AccountComparison,
   wallet: WalletConnect,
   signer: TransactionSigner,
   portfolio: PortfolioValue,
