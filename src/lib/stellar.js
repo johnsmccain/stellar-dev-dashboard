@@ -16,6 +16,8 @@ export const NETWORKS = {
   },
 }
 
+const COINGECKO_XLM_PRICE_URL = 'https://api.coingecko.com/api/v3/simple/price?ids=stellar&vs_currencies=usd'
+
 export function getServer(network = 'testnet') {
   return new StellarSdk.Horizon.Server(NETWORKS[network].horizonUrl)
 }
@@ -117,6 +119,8 @@ function titleCaseLabel(value) {
 
 export function getOperationLabel(type) {
   return OPERATION_LABELS[type] || titleCaseLabel(type)
+}
+
 export async function fetchAccountCreationDate(publicKey, network = 'testnet') {
   const server = getServer(network)
 
@@ -146,6 +150,78 @@ export async function fetchNetworkStats(network = 'testnet') {
   return {
     latestLedger: ledger.records[0],
     feeStats,
+  }
+}
+
+function parseTopOfBookPrice(levels = []) {
+  const price = parseFloat(levels[0]?.price)
+  if (!Number.isFinite(price) || price <= 0) return null
+  return price
+}
+
+export async function fetchXLMPrice() {
+  const response = await fetch(COINGECKO_XLM_PRICE_URL)
+
+  if (!response.ok) {
+    throw new Error(`XLM price request failed: ${response.status}`)
+  }
+
+  const data = await response.json()
+  const usd = data?.stellar?.usd
+
+  if (!Number.isFinite(usd)) {
+    throw new Error('XLM price data unavailable')
+  }
+
+  return {
+    usd,
+    source: 'coingecko',
+  }
+}
+
+export async function fetchAssetPrice(asset, network = 'testnet') {
+  if (!asset || asset.asset_type === 'native') return null
+
+  if (!asset.asset_type?.startsWith('credit_alphanum') || !asset.asset_code || !asset.asset_issuer) {
+    return null
+  }
+
+  const params = new URLSearchParams({
+    selling_asset_type: asset.asset_type,
+    selling_asset_code: asset.asset_code,
+    selling_asset_issuer: asset.asset_issuer,
+    buying_asset_type: 'native',
+  })
+
+  const response = await fetch(`${NETWORKS[network].horizonUrl}/order_book?${params.toString()}`)
+
+  if (!response.ok) {
+    throw new Error(`Order book request failed: ${response.status}`)
+  }
+
+  const orderBook = await response.json()
+  const bestBid = parseTopOfBookPrice(orderBook.bids)
+  const bestAsk = parseTopOfBookPrice(orderBook.asks)
+
+  if (bestBid !== null && bestAsk !== null) {
+    return {
+      xlm: (bestBid + bestAsk) / 2,
+      source: 'sdex',
+      method: 'midpoint',
+      bestBid,
+      bestAsk,
+    }
+  }
+
+  const fallback = bestBid ?? bestAsk
+  if (fallback === null) return null
+
+  return {
+    xlm: fallback,
+    source: 'sdex',
+    method: bestBid !== null ? 'best_bid' : 'best_ask',
+    bestBid,
+    bestAsk,
   }
 }
 

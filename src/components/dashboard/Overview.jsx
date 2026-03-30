@@ -4,6 +4,7 @@ import { fetchNetworkStats, formatXLM, shortAddress } from '../../lib/stellar'
 import { StatCard } from './Card'
 import CopyableValue from './CopyableValue'
 import { format } from 'date-fns'
+import useAssetUsdEstimates, { formatEstimatedUsd } from '../../hooks/useAssetUsdEstimates'
 
 export default function Overview() {
   const {
@@ -24,6 +25,13 @@ export default function Overview() {
   const otherAssets = accountData?.balances?.filter(b => b.asset_type !== 'native') || []
   const ledger = networkStats?.latestLedger
   const feeStats = networkStats?.feeStats
+  const { getEstimate } = useAssetUsdEstimates({
+    balances: accountData?.balances || [],
+    connectedAddress,
+    network,
+    refreshKey: accountData,
+  })
+  const xlmEstimate = xlmBalance ? getEstimate(xlmBalance) : null
 
   return (
     <div className="animate-in" style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
@@ -63,7 +71,7 @@ export default function Overview() {
         <StatCard
           label="XLM Balance"
           value={xlmBalance ? formatXLM(xlmBalance.balance) : '—'}
-          sub="lumens"
+          sub={xlmEstimate ? `lumens · Est. ${formatEstimatedUsd(xlmEstimate.usd)}` : 'lumens'}
           accent="var(--cyan)"
         />
         <StatCard
@@ -124,9 +132,16 @@ export default function Overview() {
                     </CopyableValue>
                   )}
                 </div>
-                <span style={{ color: 'var(--cyan)', fontFamily: 'var(--font-mono)' }}>
-                  {formatXLM(asset.balance)}
-                </span>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
+                  <span style={{ color: 'var(--cyan)', fontFamily: 'var(--font-mono)' }}>
+                    {formatXLM(asset.balance)}
+                  </span>
+                  {getEstimate(asset) && (
+                    <span style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: '11px' }}>
+                      Est. {formatEstimatedUsd(getEstimate(asset).usd)}
+                    </span>
+                  )}
+                </div>
               </div>
             ))}
           </div>
