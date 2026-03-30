@@ -21,6 +21,7 @@ import ContractInteraction from "./components/dashboard/ContractInteraction";
 import ContractABI from "./components/dashboard/ContractABI";
 import DEXExplorer from "./components/dashboard/DEXExplorer";
 import ExplorerEmbed from "./components/dashboard/ExplorerEmbed";
+import RealTimeLedger from "./components/dashboard/RealTimeLedger";
 import { useStore } from "./lib/store";
 
 const TABS = {
@@ -40,6 +41,7 @@ const TABS = {
   contractABI: ContractABI,
   dex: DEXExplorer,
   explorers: ExplorerEmbed,
+  realtime: RealTimeLedger,
   charts: () => (
     <div
       className="animate-in"
