@@ -15,7 +15,7 @@ A real-time, open-source developer dashboard for the Stellar network — built w
 - **Testnet Faucet** — Fund accounts via Friendbot directly in the UI
 - **Wallet Connect** — Connect any public key on Mainnet or Testnet
 
-## Getting Started
+## Getting Started!
 
 ```bash
 # Install dependencies
