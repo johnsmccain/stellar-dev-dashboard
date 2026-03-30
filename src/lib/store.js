@@ -223,4 +223,16 @@ export const useStore = create(persistMiddleware((set, get) => ({
   removeNotification: (id) => set((state) => ({
     notifications: state.notifications.filter(n => n.id !== id)
   })),
+
+  // Streaming
+  streamStatus: 'disconnected',
+  streamLedgers: [],
+  streamError: null,
+  setStreamStatus: (status) => set({ streamStatus: status }),
+  addStreamLedger: (ledger) => set((state) => {
+    if (state.streamLedgers.some(l => l.sequence === ledger.sequence)) return state
+    return { streamLedgers: [ledger, ...state.streamLedgers.slice(0, 49)] }
+  }),
+  clearStreamLedgers: () => set({ streamLedgers: [] }),
+  setStreamError: (e) => set({ streamError: e }),
 })))
