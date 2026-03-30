@@ -3,13 +3,14 @@ import { format } from 'date-fns'
 import { useStore } from '../../lib/store'
 import { shortAddress, formatXLM, fetchAccountCreationDate, fetchAccountOffers } from '../../lib/stellar'
 import CopyableValue from './CopyableValue'
+import useAssetUsdEstimates, { formatEstimatedUsd } from '../../hooks/useAssetUsdEstimates'
 
 function formatAsset(assetType, assetCode) {
   if (assetType === 'native') return 'XLM'
   return assetCode || 'Unknown'
 }
 
-function InfoRow({ label, value, mono = true, accent, copyValue }) {
+function InfoRow({ label, value, mono = true, accent, copyValue, secondaryValue }) {
   const textStyle = {
     fontSize: '12px',
     color: accent || 'var(--text-primary)',
@@ -28,13 +29,20 @@ function InfoRow({ label, value, mono = true, accent, copyValue }) {
       borderBottom: '1px solid var(--border)',
     }}>
       <span style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.8px', flexShrink: 0 }}>{label}</span>
-      {copyValue ? (
-        <CopyableValue value={copyValue} textStyle={textStyle}>
-          {value ?? '—'}
-        </CopyableValue>
-      ) : (
-        <span style={textStyle}>{value ?? '—'}</span>
-      )}
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px', minWidth: 0 }}>
+        {copyValue ? (
+          <CopyableValue value={copyValue} textStyle={textStyle}>
+            {value ?? '—'}
+          </CopyableValue>
+        ) : (
+          <span style={textStyle}>{value ?? '—'}</span>
+        )}
+        {secondaryValue && (
+          <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+            {secondaryValue}
+          </span>
+        )}
+      </div>
     </div>
   )
 }
@@ -98,10 +106,18 @@ export default function Account() {
   )
 
   const xlm = accountData.balances?.find(b => b.asset_type === 'native')
+  const otherAssets = accountData.balances?.filter(b => b.asset_type !== 'native') || []
   const signers = accountData.signers || []
   const flags = accountData.flags || {}
   const thresholds = accountData.thresholds || {}
   const createdValue = createdAtLoading ? 'Loading...' : createdAt ? format(new Date(createdAt), 'MMM d, yyyy') : 'Unknown'
+  const { getEstimate } = useAssetUsdEstimates({
+    balances: accountData?.balances || [],
+    connectedAddress,
+    network,
+    refreshKey: accountData,
+  })
+  const xlmEstimate = xlm ? getEstimate(xlm) : null
 
   return (
     <div className="animate-in" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -113,7 +129,12 @@ export default function Account() {
         <InfoRow label="Account ID" value={accountData.account_id} copyValue={accountData.account_id} />
         <InfoRow label="Sequence" value={accountData.sequence} />
         <InfoRow label="Created" value={createdValue} mono={false} />
-        <InfoRow label="XLM Balance" value={xlm ? formatXLM(xlm.balance) + ' XLM' : '—'} accent="var(--cyan)" />
+        <InfoRow
+          label="XLM Balance"
+          value={xlm ? formatXLM(xlm.balance) + ' XLM' : '—'}
+          accent="var(--cyan)"
+          secondaryValue={xlmEstimate ? `Est. ${formatEstimatedUsd(xlmEstimate.usd)}` : null}
+        />
         <InfoRow label="Subentry Count" value={accountData.subentry_count} />
         <div style={{ padding: '10px 18px' }}>
           <a
@@ -131,6 +152,59 @@ export default function Account() {
             View on Stellar Expert ↗
           </a>
         </div>
+      </div>
+
+      <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
+        <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)', fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: '13px' }}>
+          Asset Balances
+        </div>
+        {otherAssets.length === 0 ? (
+          <div style={{ padding: '16px 18px', fontSize: '12px', color: 'var(--text-muted)' }}>No non-native assets</div>
+        ) : (
+          otherAssets.map((asset, index) => {
+            const estimate = getEstimate(asset)
+
+            return (
+              <div
+                key={`${asset.asset_type}:${asset.asset_code}:${asset.asset_issuer}`}
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  gap: '16px',
+                  padding: '12px 18px',
+                  borderBottom: index < otherAssets.length - 1 ? '1px solid var(--border)' : 'none',
+                }}
+              >
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                    {formatAsset(asset.asset_type, asset.asset_code)}
+                  </div>
+                  {asset.asset_issuer && (
+                    <CopyableValue
+                      value={asset.asset_issuer}
+                      title="Copy asset issuer public key"
+                      containerStyle={{ color: 'var(--text-muted)', fontSize: '11px', marginTop: '4px', fontFamily: 'var(--font-mono)' }}
+                      textStyle={{ maxWidth: '220px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                    >
+                      {shortAddress(asset.asset_issuer)}
+                    </CopyableValue>
+                  )}
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
+                  <span style={{ color: 'var(--cyan)', fontFamily: 'var(--font-mono)', fontSize: '12px' }}>
+                    {formatXLM(asset.balance)}
+                  </span>
+                  {estimate && (
+                    <span style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: '11px' }}>
+                      Est. {formatEstimatedUsd(estimate.usd)}
+                    </span>
+                  )}
+                </div>
+              </div>
+            )
+          })
+        )}
       </div>
 
       <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
