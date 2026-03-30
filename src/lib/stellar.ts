@@ -28,6 +28,8 @@ export const NETWORKS: Record<NetworkName, NetworkConfig> = {
   },
 }
 
+const COINGECKO_XLM_PRICE_URL = 'https://api.coingecko.com/api/v3/simple/price?ids=stellar&vs_currencies=usd'
+
 // ─── Servers ──────────────────────────────────────────────────────────────────
 
 export function getServer(network: NetworkName = 'testnet'): StellarSdk.Horizon.Server {
@@ -212,6 +214,100 @@ export async function fetchNetworkStats(network: NetworkName = 'testnet'): Promi
   return {
     latestLedger: ledger.records[0],
     feeStats,
+  }
+}
+
+export interface XLMPrice {
+  usd: number
+  source: 'coingecko'
+}
+
+export interface AssetPriceEstimate {
+  xlm: number
+  source: 'sdex'
+  method: 'midpoint' | 'best_bid' | 'best_ask'
+  bestBid: number | null
+  bestAsk: number | null
+}
+
+export interface AssetBalanceLike {
+  asset_type: string
+  asset_code?: string
+  asset_issuer?: string
+}
+
+function parseTopOfBookPrice(levels: Array<{ price?: string }> = []): number | null {
+  const price = parseFloat(levels[0]?.price ?? '')
+  if (!Number.isFinite(price) || price <= 0) return null
+  return price
+}
+
+export async function fetchXLMPrice(): Promise<XLMPrice> {
+  const response = await fetch(COINGECKO_XLM_PRICE_URL)
+
+  if (!response.ok) {
+    throw new Error(`XLM price request failed: ${response.status}`)
+  }
+
+  const data = await response.json()
+  const usd = data?.stellar?.usd
+
+  if (!Number.isFinite(usd)) {
+    throw new Error('XLM price data unavailable')
+  }
+
+  return {
+    usd,
+    source: 'coingecko',
+  }
+}
+
+export async function fetchAssetPrice(
+  asset: AssetBalanceLike,
+  network: NetworkName = 'testnet'
+): Promise<AssetPriceEstimate | null> {
+  if (!asset || asset.asset_type === 'native') return null
+
+  if (!asset.asset_type.startsWith('credit_alphanum') || !asset.asset_code || !asset.asset_issuer) {
+    return null
+  }
+
+  const params = new URLSearchParams({
+    selling_asset_type: asset.asset_type,
+    selling_asset_code: asset.asset_code,
+    selling_asset_issuer: asset.asset_issuer,
+    buying_asset_type: 'native',
+  })
+
+  const response = await fetch(`${NETWORKS[network].horizonUrl}/order_book?${params.toString()}`)
+
+  if (!response.ok) {
+    throw new Error(`Order book request failed: ${response.status}`)
+  }
+
+  const orderBook = await response.json()
+  const bestBid = parseTopOfBookPrice(orderBook.bids)
+  const bestAsk = parseTopOfBookPrice(orderBook.asks)
+
+  if (bestBid !== null && bestAsk !== null) {
+    return {
+      xlm: (bestBid + bestAsk) / 2,
+      source: 'sdex',
+      method: 'midpoint',
+      bestBid,
+      bestAsk,
+    }
+  }
+
+  const fallback = bestBid ?? bestAsk
+  if (fallback === null) return null
+
+  return {
+    xlm: fallback,
+    source: 'sdex',
+    method: bestBid !== null ? 'best_bid' : 'best_ask',
+    bestBid,
+    bestAsk,
   }
 }
 
@@ -727,4 +823,3 @@ export async function fetchPaymentPaths(
 }
 
 export { StellarSdk }
-
