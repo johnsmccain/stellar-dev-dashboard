@@ -1,236 +1,323 @@
-import React, { useEffect } from 'react'
-import { useStore } from '../../lib/store'
-import { fetchNetworkStats, formatXLM, shortAddress } from '../../lib/stellar'
-import { StatCard } from './Card'
-import CopyableValue from './CopyableValue'
-import { format } from 'date-fns'
-import useAssetUsdEstimates, { formatEstimatedUsd } from '../../hooks/useAssetUsdEstimates'
+import React, { useState, useEffect } from 'react';
+import { useStore } from '../../lib/store';
+import { shortAddress } from '../../lib/stellar';
+import CopyableValue from './CopyableValue';
+import DashboardGrid from '../layout/DashboardGrid';
+import WidgetSelector from '../layout/WidgetSelector';
+import { useResponsive } from '../../hooks/useResponsive';
+import { usePersistedState } from '../../hooks/usePersistedState';
+import { addBreadcrumb } from '../../lib/errorReporting';
+
+// Import widget components
+import BalanceWidget from '../layout/widgets/BalanceWidget';
+import AssetsWidget from '../layout/widgets/AssetsWidget';
+import TransactionsWidget from '../layout/widgets/TransactionsWidget';
+import NetworkStatsWidget from '../layout/widgets/NetworkStatsWidget';
+import AccountStatsWidget from '../layout/widgets/AccountStatsWidget';
+import QuickActionsWidget from '../layout/widgets/QuickActionsWidget';
+import PriceTickerWidget from '../layout/widgets/PriceTickerWidget';
+
+// Default widget layout
+const DEFAULT_WIDGETS = [
+  {
+    id: 'balance-default',
+    type: 'balance',
+    component: React.createElement(BalanceWidget, { key: 'balance-default' }),
+    width: 300,
+    height: 250,
+    span: 1
+  },
+  {
+    id: 'assets-default',
+    type: 'assets',
+    component: React.createElement(AssetsWidget, { key: 'assets-default' }),
+    width: 350,
+    height: 300,
+    span: 1
+  },
+  {
+    id: 'transactions-default',
+    type: 'transactions',
+    component: React.createElement(TransactionsWidget, { key: 'transactions-default' }),
+    width: 400,
+    height: 350,
+    span: 2
+  },
+  {
+    id: 'networkStats-default',
+    type: 'networkStats',
+    component: React.createElement(NetworkStatsWidget, { key: 'networkStats-default' }),
+    width: 300,
+    height: 280,
+    span: 1
+  }
+];
 
 export default function Overview() {
-  const {
-    accountData, transactions, operations, network,
-    networkStats, setNetworkStats, statsLoading, setStatsLoading,
-    connectedAddress, txLoading, opsLoading,
-  } = useStore()
+  const { connectedAddress, network } = useStore();
+  const { isMobile, isTablet } = useResponsive();
+  
+  // Persisted widget layout
+  const [widgets, setWidgets] = usePersistedState('dashboard-widgets', DEFAULT_WIDGETS);
+  const [isEditing, setIsEditing] = useState(false);
+  const [showWidgetSelector, setShowWidgetSelector] = useState(false);
 
-  useEffect(() => {
-    setStatsLoading(true)
-    fetchNetworkStats(network)
-      .then(s => setNetworkStats(s))
-      .catch(() => {})
-      .finally(() => setStatsLoading(false))
-  }, [network])
+  // Refresh widget components when data changes
+  const refreshWidgets = () => {
+    const refreshedWidgets = widgets.map(widget => ({
+      ...widget,
+      component: React.createElement(getWidgetComponent(widget.type), { 
+        key: `${widget.type}-${Date.now()}`,
+        onRefresh: () => refreshWidgets()
+      })
+    }));
+    setWidgets(refreshedWidgets);
+    addBreadcrumb('Dashboard widgets refreshed', 'user_action');
+  };
 
-  const xlmBalance = accountData?.balances?.find(b => b.asset_type === 'native')
-  const otherAssets = accountData?.balances?.filter(b => b.asset_type !== 'native') || []
-  const ledger = networkStats?.latestLedger
-  const feeStats = networkStats?.feeStats
-  const { getEstimate } = useAssetUsdEstimates({
-    balances: accountData?.balances || [],
-    connectedAddress,
-    network,
-    refreshKey: accountData,
-  })
-  const xlmEstimate = xlmBalance ? getEstimate(xlmBalance) : null
+  // Get widget component by type
+  const getWidgetComponent = (type) => {
+    const components = {
+      balance: BalanceWidget,
+      assets: AssetsWidget,
+      transactions: TransactionsWidget,
+      networkStats: NetworkStatsWidget,
+      accountStats: AccountStatsWidget,
+      quickActions: QuickActionsWidget,
+      priceTicker: PriceTickerWidget
+    };
+    return components[type] || BalanceWidget;
+  };
+
+  // Handle layout changes
+  const handleLayoutChange = (newLayout) => {
+    setWidgets(newLayout);
+    addBreadcrumb('Dashboard layout changed', 'user_action', { 
+      widgetCount: newLayout.length 
+    });
+  };
+
+  // Handle widget resize
+  const handleWidgetResize = (widget, newSize) => {
+    const updatedWidgets = widgets.map(w => 
+      w.id === widget.id ? { ...w, ...newSize } : w
+    );
+    setWidgets(updatedWidgets);
+    addBreadcrumb('Widget resized', 'user_action', { 
+      widgetId: widget.id,
+      newSize 
+    });
+  };
+
+  // Handle widget removal
+  const handleWidgetRemove = (widget) => {
+    const updatedWidgets = widgets.filter(w => w.id !== widget.id);
+    setWidgets(updatedWidgets);
+    addBreadcrumb('Widget removed', 'user_action', { 
+      widgetId: widget.id,
+      widgetType: widget.type 
+    });
+  };
+
+  // Handle adding new widget
+  const handleAddWidget = (newWidget) => {
+    const updatedWidgets = [...widgets, newWidget];
+    setWidgets(updatedWidgets);
+    addBreadcrumb('Widget added', 'user_action', { 
+      widgetId: newWidget.id,
+      widgetType: newWidget.type 
+    });
+  };
+
+  // Reset to default layout
+  const handleResetLayout = () => {
+    setWidgets(DEFAULT_WIDGETS);
+    setIsEditing(false);
+    addBreadcrumb('Dashboard layout reset to default', 'user_action');
+  };
+
+  // Toggle edit mode
+  const toggleEditMode = () => {
+    setIsEditing(!isEditing);
+    addBreadcrumb(`Dashboard edit mode ${!isEditing ? 'enabled' : 'disabled'}`, 'user_action');
+  };
+
+  // Responsive column configuration
+  const getColumns = () => {
+    if (isMobile) return { mobile: 1, tablet: 1, desktop: 1 };
+    if (isTablet) return { mobile: 1, tablet: 2, desktop: 2 };
+    return { mobile: 1, tablet: 2, desktop: 3 };
+  };
 
   return (
     <div className="animate-in" style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
-        <div>
-          <div style={{ fontFamily: 'var(--font-display)', fontSize: '22px', fontWeight: 700 }}>
-            Overview
+      <div style={{ 
+        display: 'flex', 
+        alignItems: isMobile ? 'flex-start' : 'center', 
+        justifyContent: 'space-between',
+        flexDirection: isMobile ? 'column' : 'row',
+        gap: isMobile ? '16px' : '0'
+      }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ 
+            fontFamily: 'var(--font-display)', 
+            fontSize: isMobile ? '20px' : '22px', 
+            fontWeight: 700,
+            marginBottom: '4px'
+          }}>
+            Dashboard Overview
           </div>
           <CopyableValue
             value={connectedAddress}
             title="Copy connected public key"
-            containerStyle={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px', fontFamily: 'var(--font-mono)' }}
-            textStyle={{ maxWidth: '260px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+            containerStyle={{ 
+              fontSize: '12px', 
+              color: 'var(--text-muted)', 
+              fontFamily: 'var(--font-mono)' 
+            }}
+            textStyle={{ 
+              maxWidth: isMobile ? '200px' : '260px', 
+              overflow: 'hidden', 
+              textOverflow: 'ellipsis', 
+              whiteSpace: 'nowrap' 
+            }}
           >
             {shortAddress(connectedAddress, 8)}
           </CopyableValue>
         </div>
-        <div style={{
-          padding: '6px 12px',
-          background: network === 'testnet' ? 'var(--amber-glow)' : 'var(--green-glow)',
-          border: `1px solid ${network === 'testnet' ? 'var(--amber)' : 'var(--green)'}`,
-          borderRadius: 'var(--radius-sm)',
-          fontSize: '11px',
-          color: network === 'testnet' ? 'var(--amber)' : 'var(--green)',
-          fontFamily: 'var(--font-mono)',
-          textTransform: 'uppercase',
-          letterSpacing: '1px',
+
+        <div style={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          gap: '12px',
+          flexWrap: 'wrap'
         }}>
-          {network}
+          {/* Network Badge */}
+          <div style={{
+            padding: '6px 12px',
+            background: network === 'testnet' ? 'var(--amber-glow)' : 'var(--green-glow)',
+            border: `1px solid ${network === 'testnet' ? 'var(--amber)' : 'var(--green)'}`,
+            borderRadius: 'var(--radius-sm)',
+            fontSize: '11px',
+            color: network === 'testnet' ? 'var(--amber)' : 'var(--green)',
+            fontFamily: 'var(--font-mono)',
+            textTransform: 'uppercase',
+            letterSpacing: '1px',
+          }}>
+            {network}
+          </div>
+
+          {/* Dashboard Controls */}
+          <div style={{ display: 'flex', gap: '8px' }}>
+            {isEditing && (
+              <button
+                onClick={() => setShowWidgetSelector(true)}
+                style={{
+                  padding: '8px 12px',
+                  background: 'var(--cyan)',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: 'var(--radius-sm)',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  transition: 'var(--transition)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}
+                title="Add widget"
+              >
+                <span>+</span>
+                {!isMobile && 'Add Widget'}
+              </button>
+            )}
+
+            {isEditing && (
+              <button
+                onClick={handleResetLayout}
+                style={{
+                  padding: '8px 12px',
+                  background: 'var(--amber)',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: 'var(--radius-sm)',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  transition: 'var(--transition)'
+                }}
+                title="Reset to default layout"
+              >
+                {isMobile ? '↺' : 'Reset'}
+              </button>
+            )}
+
+            <button
+              onClick={toggleEditMode}
+              style={{
+                padding: '8px 12px',
+                background: isEditing ? 'var(--green)' : 'var(--bg-elevated)',
+                color: isEditing ? 'white' : 'var(--text-primary)',
+                border: `1px solid ${isEditing ? 'var(--green)' : 'var(--border)'}`,
+                borderRadius: 'var(--radius-sm)',
+                fontSize: '12px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                transition: 'var(--transition)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}
+              title={isEditing ? 'Save layout' : 'Edit dashboard'}
+            >
+              <span>{isEditing ? '✓' : '✏️'}</span>
+              {!isMobile && (isEditing ? 'Done' : 'Edit')}
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Account Stats */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
-        <StatCard
-          label="XLM Balance"
-          value={xlmBalance ? formatXLM(xlmBalance.balance) : '—'}
-          sub={xlmEstimate ? `lumens · Est. ${formatEstimatedUsd(xlmEstimate.usd)}` : 'lumens'}
-          accent="var(--cyan)"
-        />
-        <StatCard
-          label="Assets"
-          value={otherAssets.length}
-          sub="non-native"
-          accent="var(--amber)"
-        />
-        <StatCard
-          label="Transactions"
-          value={txLoading ? null : transactions.length}
-          sub="recent 20"
-          loading={txLoading}
-        />
-        <StatCard
-          label="Sequence"
-          value={accountData?.sequence ? accountData.sequence.slice(-8) + '…' : '—'}
-          sub="ledger seq"
-        />
-      </div>
-
-      {/* Assets */}
-      {otherAssets.length > 0 && (
+      {/* Edit Mode Notice */}
+      {isEditing && (
         <div style={{
-          background: 'var(--bg-card)',
-          border: '1px solid var(--border)',
-          borderRadius: 'var(--radius-lg)',
-          overflow: 'hidden',
+          padding: '12px 16px',
+          background: 'var(--cyan-glow-sm)',
+          border: '1px solid var(--cyan)',
+          borderRadius: 'var(--radius-md)',
+          fontSize: '13px',
+          color: 'var(--text-primary)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px'
         }}>
-          <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)', fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: '13px' }}>
-            Asset Holdings
-          </div>
-          <div style={{ padding: '4px 0' }}>
-            {otherAssets.map((asset, i) => (
-              <div key={i} style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '10px 18px',
-                borderBottom: i < otherAssets.length - 1 ? '1px solid var(--border)' : 'none',
-                transition: 'var(--transition)',
-              }}
-              onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
-              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-              >
-                <div>
-                  <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>
-                    {asset.asset_code || asset.asset_type}
-                  </span>
-                  {asset.asset_issuer && (
-                    <CopyableValue
-                      value={asset.asset_issuer}
-                      title="Copy asset issuer public key"
-                      containerStyle={{ color: 'var(--text-muted)', fontSize: '11px', marginLeft: '8px', fontFamily: 'var(--font-mono)' }}
-                      textStyle={{ maxWidth: '220px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                    >
-                      {shortAddress(asset.asset_issuer)}
-                    </CopyableValue>
-                  )}
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
-                  <span style={{ color: 'var(--cyan)', fontFamily: 'var(--font-mono)' }}>
-                    {formatXLM(asset.balance)}
-                  </span>
-                  {getEstimate(asset) && (
-                    <span style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: '11px' }}>
-                      Est. {formatEstimatedUsd(getEstimate(asset).usd)}
-                    </span>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
+          <span>✏️</span>
+          <span>
+            <strong>Edit Mode:</strong> Drag widgets to rearrange, resize using handles, or remove with the × button.
+          </span>
         </div>
       )}
 
-      {/* Recent transactions */}
-      <div style={{
-        background: 'var(--bg-card)',
-        border: '1px solid var(--border)',
-        borderRadius: 'var(--radius-lg)',
-        overflow: 'hidden',
-      }}>
-        <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: '13px' }}>Recent Transactions</div>
-          <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>latest 5</span>
-        </div>
-        {txLoading ? (
-          <div style={{ padding: '24px', display: 'flex', justifyContent: 'center' }}>
-            <div className="spinner" />
-          </div>
-        ) : transactions.slice(0, 5).map((tx, i) => (
-          <div key={tx.id} style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '12px',
-            padding: '12px 18px',
-            borderBottom: i < 4 ? '1px solid var(--border)' : 'none',
-            transition: 'var(--transition)',
-          }}
-          onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
-          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-          >
-            <div style={{
-              width: '8px', height: '8px', borderRadius: '50%',
-              background: tx.successful ? 'var(--green)' : 'var(--red)',
-              flexShrink: 0,
-            }} />
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <CopyableValue
-                value={tx.hash}
-                title="Copy transaction hash"
-                containerStyle={{ fontSize: '12px', color: 'var(--text-primary)', fontFamily: 'var(--font-mono)', maxWidth: '100%', flex: 1, minWidth: 0 }}
-                textStyle={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-              >
-                {tx.hash}
-              </CopyableValue>
-              <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
-                {tx.operation_count} op{tx.operation_count !== 1 ? 's' : ''} · {format(new Date(tx.created_at), 'MMM d, HH:mm')}
-              </div>
-            </div>
-            <a
-              href={`https://stellar.expert/explorer/${network}/tx/${tx.hash}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{ fontSize: '11px', color: 'var(--cyan)', flexShrink: 0 }}
-            >
-              ↗
-            </a>
-          </div>
-        ))}
-      </div>
+      {/* Dashboard Grid */}
+      <DashboardGrid
+        widgets={widgets}
+        onLayoutChange={handleLayoutChange}
+        onWidgetResize={handleWidgetResize}
+        onWidgetRemove={handleWidgetRemove}
+        editable={isEditing}
+        columns={getColumns()}
+        gap={isMobile ? 12 : 16}
+        minWidgetHeight={200}
+      />
 
-      {/* Network stats */}
-      <div>
-        <div style={{ fontSize: '11px', color: 'var(--text-muted)', letterSpacing: '1px', marginBottom: '10px' }}>NETWORK STATS</div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
-          <StatCard
-            label="Latest Ledger"
-            value={ledger?.sequence?.toLocaleString() ?? '—'}
-            loading={statsLoading}
-            accent="var(--text-secondary)"
-          />
-          <StatCard
-            label="Base Fee"
-            value={feeStats ? feeStats.last_ledger_base_fee + ' stroops' : '—'}
-            loading={statsLoading}
-            accent="var(--text-secondary)"
-          />
-          <StatCard
-            label="Ledger Close"
-            value={ledger ? format(new Date(ledger.closed_at), 'HH:mm:ss') : '—'}
-            sub={ledger ? format(new Date(ledger.closed_at), 'MMM d, yyyy') : ''}
-            loading={statsLoading}
-            accent="var(--text-secondary)"
-          />
-        </div>
-      </div>
-
+      {/* Widget Selector Modal */}
+      <WidgetSelector
+        isOpen={showWidgetSelector}
+        onClose={() => setShowWidgetSelector(false)}
+        onAddWidget={handleAddWidget}
+        existingWidgets={widgets}
+      />
     </div>
-  )
+  );
 }

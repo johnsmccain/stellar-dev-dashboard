@@ -13,6 +13,12 @@ export interface StoreState {
   network: NetworkName
   setNetwork: (network: NetworkName) => void
 
+  // UI State
+  theme: 'light' | 'dark'
+  toggleTheme: () => void
+  isMobileMenuOpen: boolean
+  setMobileMenuOpen: (open: boolean) => void
+
   // Wallet / Account
   connectedAddress: string | null
   accountData: Horizon.AccountResponse | null
@@ -95,6 +101,12 @@ export const useStore = create<StoreState>((set) => ({
       opsPagingLoading: false,
     })
   },
+
+  // UI State
+  theme: 'dark',
+  toggleTheme: () => set((state) => ({ theme: state.theme === 'light' ? 'dark' : 'light' })),
+  isMobileMenuOpen: false,
+  setMobileMenuOpen: (open) => set({ isMobileMenuOpen: open }),
 
   // Wallet / Account
   connectedAddress: null,

@@ -1,8 +1,9 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { I18nProvider } from "./components/I18nProvider";
 import "./i18n/index.js";
 
 import Sidebar from "./components/layout/Sidebar";
+import MobileHeader from "./components/layout/MobileHeader";
 import ConnectPanel from "./components/dashboard/ConnectPanel";
 import Overview from "./components/dashboard/Overview";
 import Account from "./components/dashboard/Account";
@@ -11,7 +12,7 @@ import Contracts from "./components/dashboard/Contracts";
 import NetworkStats from "./components/dashboard/NetworkStats";
 import Faucet from "./components/dashboard/Faucet";
 import Builder from "./components/dashboard/Builder";
-import Compare from "./components/dashboard/Compare";
+import Compare from "./components/dashboard/AccountComparison";
 import WalletConnect from "./components/dashboard/WalletConnect";
 import TransactionSigner from "./components/dashboard/TransactionSigner";
 import PriceTicker from "./components/dashboard/PriceTicker";
@@ -25,8 +26,12 @@ import ContractABI from "./components/dashboard/ContractABI";
 import DEXExplorer from "./components/dashboard/DEXExplorer";
 import ExplorerEmbed from "./components/dashboard/ExplorerEmbed";
 import RealTimeLedger from "./components/dashboard/RealTimeLedger";
+import { AssetDiscovery } from "./components/assets";
+import ErrorBoundary from "./components/ErrorBoundary";
 import { useStore } from "./lib/store";
 import { useTranslation } from "./hooks/useTranslation";
+import { useResponsive } from "./hooks/useResponsive";
+import { initializeErrorReporting, addBreadcrumb } from "./lib/errorReporting";
 
 const ChartsTab = () => {
   const { t } = useTranslation();
@@ -70,42 +75,135 @@ const TABS = {
   explorers: ExplorerEmbed,
   realtime: RealTimeLedger,
   charts: ChartsTab,
+  assets: AssetDiscovery,
 };
 
 function DashboardLayout() {
-  const { connectedAddress, activeTab, theme } = useStore();
+  const { connectedAddress, activeTab, theme, isMobileMenuOpen, setMobileMenuOpen } = useStore();
+  const { windowWidth, isMobile, isTablet } = useResponsive();
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
   }, [theme]);
 
+  // Initialize error reporting system
+  useEffect(() => {
+    initializeErrorReporting({
+      enabled: true,
+      maxErrorsPerSession: 100,
+      batchSize: 5,
+      flushInterval: 30000,
+      // endpoint: 'https://your-error-reporting-endpoint.com/api/errors' // Set this in production
+    });
+
+    addBreadcrumb('Application initialized', 'info', { theme, isMobile });
+  }, [theme, isMobile]);
+
+  // Close mobile menu when resizing to desktop
+  useEffect(() => {
+    if (!isMobile && isMobileMenuOpen) {
+      setMobileMenuOpen(false);
+    }
+  }, [isMobile, isMobileMenuOpen, setMobileMenuOpen]);
+
+  // Close mobile menu on escape key
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape' && isMobileMenuOpen) {
+        setMobileMenuOpen(false);
+        addBreadcrumb('Mobile menu closed via escape key', 'user_action');
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isMobileMenuOpen, setMobileMenuOpen]);
+
+  // Prevent body scroll when mobile menu is open
+  useEffect(() => {
+    if (isMobileMenuOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [isMobileMenuOpen]);
+
+  // Track tab changes
+  useEffect(() => {
+    addBreadcrumb(`Navigated to ${activeTab} tab`, 'navigation', { activeTab });
+  }, [activeTab]);
+
   const ActiveComponent = TABS[activeTab] || Overview;
 
+  // Responsive main styles based on screen size
+  const getMainStyles = () => {
+    const baseStyles = {
+      flex: 1,
+      width: "100%",
+      transition: "margin-left var(--transition), padding var(--transition)",
+    };
+
+    if (isMobile) {
+      return {
+        ...baseStyles,
+        marginLeft: 0,
+        padding: "var(--content-padding-mobile)",
+        paddingTop: "calc(var(--header-height) + var(--content-padding-mobile) + 16px)",
+        maxWidth: "100%",
+      };
+    }
+
+    if (isTablet) {
+      return {
+        ...baseStyles,
+        marginLeft: "var(--sidebar-width)",
+        padding: "var(--content-padding-tablet)",
+        paddingTop: "calc(var(--content-padding-tablet) + 16px)",
+        maxWidth: "1100px",
+      };
+    }
+
+    return {
+      ...baseStyles,
+      marginLeft: "var(--sidebar-width)",
+      padding: "var(--content-padding)",
+      paddingTop: "calc(var(--content-padding) + 16px)",
+      maxWidth: "1100px",
+    };
+  };
+
+  const handleRetry = async () => {
+    // Retry logic for the entire app - could reload or reset state
+    addBreadcrumb('App-level retry attempted', 'user_action');
+    window.location.reload();
+  };
+
   return (
-    <div
-      style={{
-        display: "flex",
-        minHeight: "100vh",
-        position: "relative",
-        zIndex: 1,
-      }}
-    >
-      <Sidebar />
-      <main
+    <ErrorBoundary onRetry={handleRetry} maxRetries={3}>
+      <div
         style={{
-          marginLeft: "220px",
-          flex: 1,
-          padding: "32px 36px",
-          maxWidth: "1100px",
-          width: "100%",
+          display: "flex",
+          minHeight: "100vh",
+          position: "relative",
+          zIndex: 1,
         }}
       >
-        <div style={{ marginBottom: "16px" }}>
-          <PriceTicker />
-        </div>
-        {!connectedAddress ? <ConnectPanel /> : <ActiveComponent />}
-      </main>
-    </div>
+        {isMobile && <MobileHeader />}
+        <Sidebar isMobile={isMobile} />
+        <main style={getMainStyles()}>
+          <div style={{ marginBottom: "16px" }}>
+            <PriceTicker />
+          </div>
+          <ErrorBoundary onRetry={handleRetry} maxRetries={2}>
+            {!connectedAddress ? <ConnectPanel /> : <ActiveComponent />}
+          </ErrorBoundary>
+        </main>
+      </div>
+    </ErrorBoundary>
   );
 }
 
