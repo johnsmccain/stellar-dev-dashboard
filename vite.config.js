@@ -10,7 +10,6 @@ export default defineConfig({
     alias: {
       buffer: 'buffer',
     },
-    // Prefer .ts over .js so imports of 'stellar' and 'store' resolve to the TS files
     extensions: ['.ts', '.tsx', '.js', '.jsx', '.json'],
   },
 })
