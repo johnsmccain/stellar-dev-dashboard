@@ -749,6 +749,166 @@ export async function simulateTransaction(
   }
 }
 
+export interface SimulationWhatIfScenario {
+  label: string
+  baseFee?: number
+  operationMultiplier?: number
+  networkCongestion?: number
+}
+
+export interface SimulationFeeOption {
+  label: string
+  fee: number
+  expectedInclusion: 'slow' | 'standard' | 'priority'
+}
+
+export interface ExecutionTraceStep {
+  step: string
+  status: 'ok' | 'warning' | 'error'
+  detail: string
+}
+
+export interface AdvancedSimulationParams extends BuildTransactionParams {
+  scenarios?: SimulationWhatIfScenario[]
+  currentLedgerLoad?: number
+}
+
+export interface AdvancedSimulationReport {
+  base: SimulateResult
+  optimizedFee: number
+  feeOptions: SimulationFeeOption[]
+  successProbability: number
+  executionTrace: ExecutionTraceStep[]
+  scenarios: Array<{
+    label: string
+    estimatedFee: number
+    successProbability: number
+  }>
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value))
+}
+
+export function optimizeTransactionFee(
+  baseFee: number,
+  operationCount: number,
+  currentLedgerLoad = 0.5
+): number {
+  const congestionMultiplier = 1 + clamp(currentLedgerLoad, 0, 1.5) * 0.85
+  const opWeight = 1 + Math.max(0, operationCount - 1) * 0.08
+  return Math.ceil(baseFee * congestionMultiplier * opWeight)
+}
+
+export function scoreTransactionSuccess(
+  simulation: SimulateResult,
+  currentLedgerLoad = 0.5
+): number {
+  if (!simulation.success) return 0
+
+  const errorPenalty = simulation.errors.length * 0.2
+  const congestionPenalty = clamp(currentLedgerLoad, 0, 1.5) * 0.28
+  const opPenalty = Math.max(0, simulation.operationCount - 2) * 0.04
+  const raw = 0.95 - errorPenalty - congestionPenalty - opPenalty
+  return clamp(raw, 0.05, 0.99)
+}
+
+export function buildExecutionTrace(
+  params: BuildTransactionParams,
+  simulation: SimulateResult
+): ExecutionTraceStep[] {
+  const steps: ExecutionTraceStep[] = [
+    {
+      step: 'Validate source account',
+      status: isValidPublicKey(params.sourceAccount) ? 'ok' : 'error',
+      detail: isValidPublicKey(params.sourceAccount)
+        ? 'Source account format is valid.'
+        : 'Source account is not a valid ed25519 public key.',
+    },
+    {
+      step: 'Assemble operations',
+      status: params.operations.length > 0 ? 'ok' : 'error',
+      detail: `${params.operations.length} operation(s) attached to transaction.`,
+    },
+    {
+      step: 'Estimate fee and bounds',
+      status: params.baseFee >= 100 ? 'ok' : 'warning',
+      detail: `Base fee ${params.baseFee} stroops with ${params.timeBounds.maxTime ? 'custom' : 'default'} time bounds.`,
+    },
+    {
+      step: 'Simulate preflight',
+      status: simulation.success ? 'ok' : 'error',
+      detail: simulation.success
+        ? 'Simulation succeeded with no blocking errors.'
+        : simulation.errors.join('; '),
+    },
+  ]
+
+  return steps
+}
+
+export async function runAdvancedTransactionSimulation(
+  params: AdvancedSimulationParams
+): Promise<AdvancedSimulationReport> {
+  const base = await simulateTransaction(params)
+  const operationCount = Math.max(1, params.operations.length)
+  const currentLedgerLoad = params.currentLedgerLoad ?? 0.55
+  const optimizedFee = optimizeTransactionFee(params.baseFee, operationCount, currentLedgerLoad)
+  const successProbability = scoreTransactionSuccess(base, currentLedgerLoad)
+  const executionTrace = buildExecutionTrace(params, base)
+
+  const feeOptions: SimulationFeeOption[] = [
+    {
+      label: 'Slow / Cost Saver',
+      fee: Math.max(100, Math.floor(optimizedFee * 0.85)),
+      expectedInclusion: 'slow',
+    },
+    {
+      label: 'Standard',
+      fee: optimizedFee,
+      expectedInclusion: 'standard',
+    },
+    {
+      label: 'Priority',
+      fee: Math.ceil(optimizedFee * 1.2),
+      expectedInclusion: 'priority',
+    },
+  ]
+
+  const scenarios = (params.scenarios || []).map((scenario) => {
+    const scenarioOps = Math.max(
+      1,
+      Math.round(operationCount * (scenario.operationMultiplier ?? 1))
+    )
+    const scenarioFee = optimizeTransactionFee(
+      scenario.baseFee ?? params.baseFee,
+      scenarioOps,
+      scenario.networkCongestion ?? currentLedgerLoad
+    )
+
+    const scenarioProbability = clamp(
+      successProbability - (scenario.networkCongestion ?? currentLedgerLoad) * 0.15 + 0.05,
+      0.03,
+      0.99
+    )
+
+    return {
+      label: scenario.label,
+      estimatedFee: scenarioFee,
+      successProbability: scenarioProbability,
+    }
+  })
+
+  return {
+    base,
+    optimizedFee,
+    feeOptions,
+    successProbability,
+    executionTrace,
+    scenarios,
+  }
+}
+
 export async function exportTransactionXDR(params: BuildTransactionParams): Promise<string> {
   const transaction = await buildTransaction(params)
   return transaction.toXDR()

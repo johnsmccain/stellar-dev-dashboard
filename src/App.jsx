@@ -20,6 +20,7 @@ import PortfolioValue from "./components/dashboard/PortfolioValue";
 import NetworkMetricsChart from "./components/charts/NetworkMetricsChart";
 import AccountActivityChart from "./components/charts/AccountActivityChart";
 import BalanceHistoryChart from "./components/charts/BalanceHistoryChart";
+import AdvancedChartSuite from "./components/charts/AdvancedChartSuite";
 import TransactionBuilder from "./components/dashboard/TransactionBuilder";
 import ContractInteraction from "./components/dashboard/ContractInteraction";
 import ContractABI from "./components/dashboard/ContractABI";
@@ -52,6 +53,7 @@ const ChartsTab = () => {
       <NetworkMetricsChart />
       <AccountActivityChart />
       <BalanceHistoryChart />
+      <AdvancedChartSuite />
     </div>
   );
 };

@@ -7,6 +7,12 @@ import {
   NETWORKS,
   simulateContractCall,
 } from '../../lib/stellar'
+import {
+  buildContractWorkspace,
+  generateDeploymentPlan,
+  getContractTemplates,
+  simulateSorobanTests,
+} from '../../lib/contractDevelopment'
 
 const ARGUMENT_TYPES = [
   { value: 'string', label: 'String' },
@@ -153,6 +159,12 @@ export default function Contracts() {
   const [invokeError, setInvokeError] = useState('')
   const [simulationResult, setSimulationResult] = useState(null)
   const [submitResult, setSubmitResult] = useState(null)
+  const [templateId, setTemplateId] = useState('token')
+  const [workspace, setWorkspace] = useState(() => buildContractWorkspace('token'))
+  const [sourceEditor, setSourceEditor] = useState(() => buildContractWorkspace('token').source)
+  const [testEditor, setTestEditor] = useState(() => buildContractWorkspace('token').tests)
+  const [devResult, setDevResult] = useState(null)
+  const [deployPlan, setDeployPlan] = useState(null)
 
   const isMainnet = network === 'mainnet'
   const inspectInputError = inspectInput.trim() !== '' && !isValidContractId(inspectInput.trim())
@@ -165,6 +177,7 @@ export default function Contracts() {
     args: invokeForm.args.filter(arg => arg.value.trim() !== ''),
     network,
   }), [connectedAddress, invokeForm, network])
+  const contractTemplates = useMemo(() => getContractTemplates(), [])
 
   function updateField(field, value) {
     setInvokeForm((current) => ({ ...current, [field]: value }))
@@ -191,6 +204,39 @@ export default function Contracts() {
       ...current,
       args: current.args.filter((_, argIndex) => argIndex !== index),
     }))
+  }
+
+  function handleLoadTemplate(nextTemplateId) {
+    try {
+      const nextWorkspace = buildContractWorkspace(nextTemplateId, {
+        contractName: nextTemplateId === 'token' ? 'TokenContract' : undefined,
+      })
+      setTemplateId(nextTemplateId)
+      setWorkspace(nextWorkspace)
+      setSourceEditor(nextWorkspace.source)
+      setTestEditor(nextWorkspace.tests)
+      setDevResult(null)
+      setDeployPlan(null)
+    } catch (error) {
+      setInvokeError(error.message || 'Failed to load template')
+    }
+  }
+
+  function handleRunLocalTests() {
+    const result = simulateSorobanTests(sourceEditor, testEditor, {
+      profile: network === 'mainnet' ? 'mainnet-safe' : 'testnet-debug',
+    })
+    setDevResult(result)
+  }
+
+  function handleGenerateDeployPlan() {
+    const contractName = workspace?.packageName || 'contract'
+    const plan = generateDeploymentPlan({
+      network,
+      sourceAccount: invokeForm.sourceAccount || connectedAddress || '<SOURCE_ACCOUNT>',
+      wasmPath: `target/wasm32-unknown-unknown/release/${contractName}.wasm`,
+    })
+    setDeployPlan(plan)
   }
 
   async function handleFetch() {
@@ -261,6 +307,72 @@ export default function Contracts() {
   return (
     <div className="animate-in" style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
       <div style={{ fontFamily: 'var(--font-display)', fontSize: '22px', fontWeight: 700 }}>Soroban Contracts</div>
+
+      <Panel
+        title="Development Suite"
+        subtitle="Template library, contract editor, simulated tests, and deployment planning."
+      >
+        <div style={{ display: 'grid', gap: '14px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '10px' }}>
+            {contractTemplates.map((template) => (
+              <button
+                key={template.id}
+                onClick={() => handleLoadTemplate(template.id)}
+                style={{
+                  textAlign: 'left',
+                  padding: '12px',
+                  borderRadius: 'var(--radius-md)',
+                  border: `1px solid ${templateId === template.id ? 'var(--cyan)' : 'var(--border)'}`,
+                  background: templateId === template.id ? 'var(--cyan-glow)' : 'var(--bg-elevated)',
+                  color: 'var(--text-primary)',
+                  cursor: 'pointer',
+                }}
+              >
+                <div style={{ fontWeight: 700, fontSize: '12px', marginBottom: '4px' }}>{template.name}</div>
+                <div style={{ color: 'var(--text-muted)', fontSize: '11px', lineHeight: 1.5 }}>{template.description}</div>
+              </button>
+            ))}
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '10px' }}>
+            <LabeledField label="Contract Source Editor">
+              <textarea
+                value={sourceEditor}
+                onChange={(event) => setSourceEditor(event.target.value)}
+                rows={14}
+                style={{ ...textInputStyle(), minHeight: '220px', resize: 'vertical' }}
+              />
+            </LabeledField>
+            <LabeledField label="Test Suite Editor">
+              <textarea
+                value={testEditor}
+                onChange={(event) => setTestEditor(event.target.value)}
+                rows={8}
+                style={{ ...textInputStyle(), minHeight: '140px', resize: 'vertical' }}
+              />
+            </LabeledField>
+          </div>
+
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+            <ActionButton label="Run Local Tests" onClick={handleRunLocalTests} />
+            <ActionButton label="Generate Deploy Plan" tone="secondary" onClick={handleGenerateDeployPlan} />
+          </div>
+
+          {devResult && (
+            <ResultBlock
+              label="Development Test Run"
+              data={devResult}
+            />
+          )}
+
+          {deployPlan && (
+            <ResultBlock
+              label="Deployment Plan"
+              data={deployPlan}
+            />
+          )}
+        </div>
+      </Panel>
 
       <Panel
         title="Inspect Contract"
